@@ -159,7 +159,7 @@ source.getContentDetails = function (url) {
         html.match(/<img[^>]+src="([^"]+)"[^>]*>/i);
 
     var thumbnail = imageMatch ? imageMatch[1] : "";
-
+    log("URL detail: " + url);
     var episodes = [];
     var pattern =
         /<a[^>]+href="(https?:\/\/otakudesu\.blog\/episode\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
@@ -207,6 +207,7 @@ source.getContentDetails = function (url) {
             thumbnail
                 ? [new Thumbnail(thumbnail, 150)]
                 : []
+                
         ),
         author: new PlatformAuthorLink(
             new PlatformID("Otakudesu", "otakudesu", pluginId),
@@ -218,6 +219,52 @@ source.getContentDetails = function (url) {
         url: url,
         videoCount: episodes.length,
         thumbnail: thumbnail,
-        contents: episodes
+        contents: episodes 
     });
+};
+
+source.search = function (query, type, order, filters, continuationToken) {
+    var searchUrl = "https://otakudesu.blog/?s=" +
+        encodeURIComponent(query) + "&post_type=anime";
+
+    var response = http.GET(searchUrl, {}, false);
+
+    if (!response.isOk) {
+        throw new Error("Gagal mencari anime di Otakudesu");
+    }
+
+    var html = response.body;
+    var pluginId = "8c84b6b0-8d37-4f26-9b67-1d33c5f90a12";
+    var videos = [];
+
+    var pattern = /<a[^>]+href="(https?:\/\/otakudesu\.blog\/anime\/[^"]+)"[^>]*>[\s\S]*?<img[^>]+src="([^"]+)"[^>]*>[\s\S]*?<h2[^>]*class="jdlflm"[^>]*>([\s\S]*?)<\/h2>/gi;
+
+    var match;
+
+    while ((match = pattern.exec(html)) !== null) {
+        var animeUrl = match[1];
+        var thumbnail = match[2];
+        var title = match[3].replace(/<[^>]*>/g, "").trim();
+
+        videos.push(new PlatformVideo({
+            id: new PlatformID("Otakudesu", animeUrl, pluginId),
+            name: title,
+            thumbnails: new Thumbnails([
+                new Thumbnail(thumbnail, 150)
+            ]),
+            author: new PlatformAuthorLink(
+                new PlatformID("Otakudesu", "otakudesu", pluginId),
+                "Otakudesu",
+                "https://otakudesu.blog/",
+                ""
+            ),
+            uploadDate: -1,
+            duration: -1,
+            viewCount: -1,
+            url: animeUrl,
+            isLive: false
+        }));
+    }
+
+    return new VideoPager(videos, false, {});
 };
