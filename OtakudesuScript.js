@@ -1,44 +1,144 @@
 
+var PLUGIN_ID = "8c84b6b0-8d37-4f26-9b67-1d33c5f90a12";
+var BASE_URL = "https://otakudesu.blog/";
+
+function cleanText(s) {
+    return s
+        .replace(/<script[\s\S]*?<\/script>/gi, "")
+        .replace(/<style[\s\S]*?<\/style>/gi, "")
+        .replace(/<[^>]*>/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&#039;|&#39;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/&nbsp;/g, " ")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function getHtml(url) {
+    var r = http.GET(url, {}, false);
+
+    if (!r.isOk) {
+        throw new Error("Gagal membuka halaman Otakudesu: " + url);
+    }
+
+    return r.body;
+}
+
+function makeAuthor() {
+    return new PlatformAuthorLink(
+        new PlatformID("Otakudesu", "otakudesu", PLUGIN_ID),
+        "Otakudesu",
+        BASE_URL,
+        ""
+    );
+}
+
+function makeThumbnail(url) {
+    return new Thumbnails(
+        url ? [new Thumbnail(url, 150)] : []
+    );
+}
+
+function makeEpisode(url, title, thumbnail) {
+    return new PlatformVideo({
+        id: new PlatformID("Otakudesu", url, PLUGIN_ID),
+        name: title,
+        thumbnails: makeThumbnail(thumbnail),
+        author: makeAuthor(),
+        uploadDate: -1,
+        duration: -1,
+        viewCount: -1,
+        url: url,
+        isLive: false
+    });
+}
+
+function parseEpisodes(html, thumbnail) {
+    var episodes = [];
+    var seen = {};
+    var pattern =
+        /<a\b[^>]*href=["'](https?:\/\/[^"']*otakudesu\.blog\/episode\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+
+    var m;
+
+    while ((m = pattern.exec(html)) !== null) {
+        var url = m[1];
+        var title = cleanText(m[2]);
+
+        if (!title || seen[url]) continue;
+
+        seen[url] = true;
+
+        episodes.push(makeEpisode(url, title, thumbnail));
+    }
+
+    return episodes;
+}
+
+function makeAnimePlaylist(url, title, thumbnail) {
+    var html = getHtml(url);
+    var episodes = parseEpisodes(html, thumbnail);
+
+    log("Anime: " + title);
+    log("Episode ditemukan: " + episodes.length);
+
+    return new PlatformPlaylistDetails({
+        id: new PlatformID("Otakudesu", url, PLUGIN_ID),
+        name: title,
+        thumbnails: makeThumbnail(thumbnail),
+        author: makeAuthor(),
+        uploadDate: -1,
+        url: url,
+        videoCount: episodes.length,
+        thumbnail: thumbnail || "",
+        contents: episodes
+    });
+}
 
 source.enable = function (conf) {
     log("Otakudesu plugin enabled");
 };
 
 source.getHome = function (continuationToken) {
-    var response = http.GET(
-        "https://otakudesu.blog/",
-        {},
-        false
-    );
-
-    if (!response.isOk) {
-        throw new Error("Gagal membuka Otakudesu");
-    }
-
-    var html = response.body;
-    var pattern = /<a[^>]+href="(https?:\/\/otakudesu\.blog\/anime\/[^"]+)"[^>]*>[\s\S]*?<img[^>]+src="([^"]+)"[^>]*>[\s\S]*?<h2[^>]*class="jdlflm"[^>]*>([\s\S]*?)<\/h2>/gi;
-
+    var html = getHtml(BASE_URL);
     var videos = [];
-    var match;
-    var pluginId = "8c84b6b0-8d37-4f26-9b67-1d33c5f90a12";
+    var seen = {};
 
-    while ((match = pattern.exec(html)) !== null) {
-        var url = match[1];
-        var thumbnail = match[2];
-        var title = match[3].replace(/<[^>]*>/g, "").trim();
+    var pattern =
+        /<a\b[^>]*href=["'](https?:\/\/[^"']*otakudesu\.blog\/anime\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+
+    var m;
+
+    while ((m = pattern.exec(html)) !== null) {
+        var url = m[1];
+        var item = m[2];
+
+        if (seen[url]) continue;
+
+        var img = item.match(
+            /<img\b[^>]*(?:data-src|src)=["']([^"']+)["']/i
+        );
+
+        var heading = item.match(
+            /<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/i
+        );
+
+        var title = heading
+            ? cleanText(heading[1])
+            : cleanText(item);
+
+        if (!title) continue;
+
+        seen[url] = true;
 
         videos.push(new PlatformVideo({
-            id: new PlatformID("Otakudesu", url, pluginId),
+            id: new PlatformID("Otakudesu", url, PLUGIN_ID),
             name: title,
-            thumbnails: new Thumbnails([
-                new Thumbnail(thumbnail, 150)
-            ]),
-            author: new PlatformAuthorLink(
-                new PlatformID("Otakudesu", "otakudesu", pluginId),
-                "Otakudesu",
-                "https://otakudesu.blog/",
-                ""
-            ),
+            thumbnails: makeThumbnail(img ? img[1] : ""),
+            author: makeAuthor(),
             uploadDate: -1,
             duration: -1,
             viewCount: -1,
@@ -47,234 +147,142 @@ source.getHome = function (continuationToken) {
         }));
     }
 
-    log("Jumlah anime ditemukan: " + videos.length);
+    return new VideoPager(videos, false, {});
+};
+
+source.search = function (
+    query, type, order, filters, continuationToken
+) {
+    var searchUrl = BASE_URL + "?s=" +
+        encodeURIComponent(query) + "&post_type=anime";
+
+    var html = getHtml(searchUrl);
+    var videos = [];
+    var seen = {};
+
+    var pattern =
+        /<a\b[^>]*href=["'](https?:\/\/[^"']*otakudesu\.blog\/anime\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+
+    var m;
+
+    while ((m = pattern.exec(html)) !== null) {
+        var url = m[1];
+        var item = m[2];
+
+        if (seen[url]) continue;
+
+        var img = item.match(
+            /<img\b[^>]*(?:data-src|src)=["']([^"']+)["']/i
+        );
+
+        var heading = item.match(
+            /<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/i
+        );
+
+        var title = heading
+            ? cleanText(heading[1])
+            : cleanText(item);
+
+        if (!title) continue;
+
+        seen[url] = true;
+
+        var thumbnail = img ? img[1] : "";
+
+        // Return playlist details directly so Grayjay can
+        // display its episode list without getContentDetails.
+        videos.push(makeAnimePlaylist(url, title, thumbnail));
+    }
+
+    log("Hasil pencarian: " + videos.length);
 
     return new VideoPager(videos, false, {});
 };
 
-
 source.isContentDetailsUrl = function (url) {
-    return /otakudesu\.blog\/(anime|episode)\//i.test(url);
+    return /otakudesu\.blog\/episode\//i.test(url);
 };
 
 source.getContentDetails = function (url) {
-    var response = http.GET(url, {}, false);
-
-    if (!response.isOk) {
-        throw new Error("Gagal membuka detail anime");
+    if (!/otakudesu\.blog\/episode\//i.test(url)) {
+        throw new Error(
+            "URL ini bukan episode. Daftar episode ditampilkan melalui playlist."
+        );
     }
 
-    var html = response.body;
-    var pluginId = "8c84b6b0-8d37-4f26-9b67-1d33c5f90a12";
+    var html = getHtml(url);
 
-    if (/otakudesu\.blog\/episode\//i.test(url)) {
-        var episodeResponse = http.GET(url, {}, false);
-
-        if (!episodeResponse.isOk) {
-            throw new Error("Gagal membuka halaman episode");
-        }
-
-        var episodeHtml = episodeResponse.body;
-
-        var iframeMatch = episodeHtml.match(
-            /<iframe[^>]+src=["']([^"']+)["']/i
-        );
-
-        if (!iframeMatch) {
-            throw new Error("Iframe video tidak ditemukan");
-        }
-
-        var playerResponse = http.GET(
-            iframeMatch[1],
-            {},
-            false
-        );
-
-        if (!playerResponse.isOk) {
-            throw new Error("Gagal membuka pemutar video");
-        }
-
-        var playerHtml = playerResponse.body;
-
-        
-        var videoMatch = playerHtml.match(
-            /https:\/\/cdn\.odcloud\.net\/[^"' ]+\.mp4/i
-        );
-
-        if (!videoMatch) {
-            throw new Error("URL MP4 tidak ditemukan");
-        }
-
-        var videoUrl = videoMatch[0];
-
-
-        var titleMatch = episodeHtml.match(
-            /<title[^>]*>([\s\S]*?)<\/title>/i
-        );
-
-        var episodeTitle = titleMatch
-            ? titleMatch[1].replace(/<[^>]*>/g, "").trim()
-            : "Episode Anime";
-
-        
-        return new PlatformVideoDetails({
-            id: new PlatformID("Otakudesu", url, pluginId),
-            name: episodeTitle,
-            thumbnails: new Thumbnails([]),
-            author: new PlatformAuthorLink(
-                new PlatformID("Otakudesu", "otakudesu", pluginId),
-                "Otakudesu",
-                "https://otakudesu.blog/",
-                ""
-            ),
-            uploadDate: -1,
-            duration: -1,
-            viewCount: -1,
-            url: url,
-            isLive: false,
-            description: "",
-            video: new UnMuxVideoSourceDescriptor(
-                [
-                    new VideoUrlSource({
-                        url: videoUrl,
-                        container: "video/mp4",
-                        name: "720p MP4",
-                        width: 1280,
-                        height: 720
-                    })
-                ],
-                []
-            )
-        });
-
-    }
-
-    var titleMatch =
-        html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+    var titleMatch = html.match(
+        /<title[^>]*>([\s\S]*?)<\/title>/i
+    );
 
     var title = titleMatch
-        ? titleMatch[1].replace(/<[^>]*>/g, "").trim()
-        : "Detail Anime";
+        ? cleanText(titleMatch[1])
+        : "Episode Anime";
 
-    var imageMatch =
-        html.match(/<img[^>]+src="([^"]+)"[^>]*>/i);
+    var iframeMatch = html.match(
+        /<iframe\b[^>]*src=["']([^"']+)["']/i
+    );
 
-    var thumbnail = imageMatch ? imageMatch[1] : "";
-    log("URL detail: " + url);
-    var episodes = [];
-    var pattern =
-        /<a[^>]+href="(https?:\/\/otakudesu\.blog\/episode\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-
-    var match;
-
-    while ((match = pattern.exec(html)) !== null) {
-        var episodeUrl = match[1];
-        var episodeTitle = match[2]
-            .replace(/<[^>]*>/g, "")
-            .trim();
-
-        if (!episodeTitle) continue;
-
-        episodes.push(new PlatformVideo({
-            id: new PlatformID(
-                "Otakudesu",
-                episodeUrl,
-                pluginId
-            ),
-            name: episodeTitle,
-            thumbnails: new Thumbnails(
-                thumbnail
-                    ? [new Thumbnail(thumbnail, 150)]
-                    : []
-            ),
-            author: new PlatformAuthorLink(
-                new PlatformID("Otakudesu", "otakudesu", pluginId),
-                "Otakudesu",
-                "https://otakudesu.blog/",
-                ""
-            ),
-            uploadDate: -1,
-            duration: -1,
-            viewCount: -1,
-            url: episodeUrl,
-            isLive: false
-        }));
+    if (!iframeMatch) {
+        throw new Error("Server video tidak ditemukan di halaman episode");
     }
 
-    return new PlatformPlaylistDetails({
-        id: new PlatformID("Otakudesu", url, pluginId),
+    var playerUrl = iframeMatch[1];
+
+    if (playerUrl.indexOf("//") === 0) {
+        playerUrl = "https:" + playerUrl;
+    }
+
+    var playerHtml = getHtml(playerUrl);
+
+    var videoMatch = playerHtml.match(
+        /<video\b[^>]*>[\s\S]*?<source\b[^>]*src=["']([^"']+)["']/i
+    );
+
+    if (!videoMatch) {
+        videoMatch = playerHtml.match(
+            /<source\b[^>]*src=["']([^"']+)["']/i
+        );
+    }
+
+    if (!videoMatch) {
+        videoMatch = playerHtml.match(
+            /["']file["']\s*:\s*["'](https?:\/\/[^"']+)["']/i
+        );
+    }
+
+    if (!videoMatch) {
+        throw new Error(
+            "URL video langsung belum ditemukan. Server ini mungkin memerlukan ekstraksi khusus."
+        );
+    }
+
+    var videoUrl = videoMatch[1]
+        .replace(/&amp;/g, "&");
+
+    return new PlatformVideoDetails({
+        id: new PlatformID("Otakudesu", url, PLUGIN_ID),
         name: title,
-        thumbnails: new Thumbnails(
-            thumbnail
-                ? [new Thumbnail(thumbnail, 150)]
-                : []
-                
-        ),
-        author: new PlatformAuthorLink(
-            new PlatformID("Otakudesu", "otakudesu", pluginId),
-            "Otakudesu",
-            "https://otakudesu.blog/",
-            ""
-        ),
+        thumbnails: makeThumbnail(""),
+        author: makeAuthor(),
         uploadDate: -1,
+        duration: -1,
+        viewCount: -1,
         url: url,
-        videoCount: episodes.length,
-        thumbnail: thumbnail,
-        contents: episodes 
+        isLive: false,
+        description: "",
+        video: new UnMuxVideoSourceDescriptor(
+            [
+                new VideoUrlSource({
+                    url: videoUrl,
+                    container: "video/mp4",
+                    name: "Otakudesu",
+                    width: 0,
+                    height: 0
+                })
+            ],
+            []
+        )
     });
-};
-
-source.search = function (query, type, order, filters, continuationToken) {
-    var searchUrl = "https://otakudesu.blog/?s=" +
-        encodeURIComponent(query) + "&post_type=anime";
-
-    var response = http.GET(searchUrl, {}, false);
-
-    if (!response.isOk) {
-        throw new Error("Gagal mencari anime di Otakudesu");
-    }
-
-    var html = response.body;
-    var pluginId = "8c84b6b0-8d37-4f26-9b67-1d33c5f90a12";
-    var videos = [];
-
-   var pattern = /<a[^>]+href=["'](https?:\/\/otakudesu\.blog\/anime\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-
-    var match;
-
-    while ((match = pattern.exec(html)) !== null) {
-       var animeUrl = match[1];
-var itemHtml = match[2];
-
-var imageMatch = itemHtml.match(/<img[^>]+src=["']([^"']+)["']/i);
-var titleMatch = itemHtml.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
-
-var thumbnail = imageMatch ? imageMatch[1] : "";
-var title = titleMatch
-    ? titleMatch[1].replace(/<[^>]*>/g, "").trim()
-    : itemHtml.replace(/<[^>]*>/g, "").trim();
-
-if (!title) continue;
-
-        videos.push(new PlatformVideo({
-            id: new PlatformID("Otakudesu", animeUrl, pluginId),
-            name: title,
-            thumbnails: new Thumbnails([
-                new Thumbnail(thumbnail, 150)
-            ]),
-            author: new PlatformAuthorLink(
-                new PlatformID("Otakudesu", "otakudesu", pluginId),
-                "Otakudesu",
-                "https://otakudesu.blog/",
-                ""
-            ),
-            uploadDate: -1,
-            duration: -1,
-            viewCount: -1,
-            url: animeUrl,
-            isLive: false
-        }));
-    }
-
-    return new VideoPager(videos, false, {});
 };
