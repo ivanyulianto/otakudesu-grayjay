@@ -1,4 +1,5 @@
 
+
 source.enable = function (conf) {
     log("Otakudesu plugin enabled");
 };
@@ -237,14 +238,23 @@ source.search = function (query, type, order, filters, continuationToken) {
     var pluginId = "8c84b6b0-8d37-4f26-9b67-1d33c5f90a12";
     var videos = [];
 
-    var pattern = /<a[^>]+href="(https?:\/\/otakudesu\.blog\/anime\/[^"]+)"[^>]*>[\s\S]*?<img[^>]+src="([^"]+)"[^>]*>[\s\S]*?<h2[^>]*class="jdlflm"[^>]*>([\s\S]*?)<\/h2>/gi;
+   var pattern = /<a[^>]+href=["'](https?:\/\/otakudesu\.blog\/anime\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
 
     var match;
 
     while ((match = pattern.exec(html)) !== null) {
-        var animeUrl = match[1];
-        var thumbnail = match[2];
-        var title = match[3].replace(/<[^>]*>/g, "").trim();
+       var animeUrl = match[1];
+var itemHtml = match[2];
+
+var imageMatch = itemHtml.match(/<img[^>]+src=["']([^"']+)["']/i);
+var titleMatch = itemHtml.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
+
+var thumbnail = imageMatch ? imageMatch[1] : "";
+var title = titleMatch
+    ? titleMatch[1].replace(/<[^>]*>/g, "").trim()
+    : itemHtml.replace(/<[^>]*>/g, "").trim();
+
+if (!title) continue;
 
         videos.push(new PlatformVideo({
             id: new PlatformID("Otakudesu", animeUrl, pluginId),
