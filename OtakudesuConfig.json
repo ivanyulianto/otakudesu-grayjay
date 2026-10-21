@@ -1,0 +1,19 @@
+{
+  "name": "Otakudesu Sub Indo",
+  "description": "Anime subtitle Indonesia dari Otakudesu",
+  "author": "Local Developer",
+  "authorUrl": "https://otakudesu.blog/",
+  "platformUrl": "https://otakudesu.blog/",
+  "sourceUrl": "http://192.168.100.247:8080/OtakudesuConfig.json",
+  "repositoryUrl": "https://otakudesu.blog/",
+  "scriptUrl": "./OtakudesuScript.js",
+  "version": 1,
+  "id": "8c84b6b0-8d37-4f26-9b67-1d33c5f90a12",
+  "packages": ["Http", "DOMParser"],
+  "allowEval": false,
+  "allowUrls": [
+    "otakudesu.blog",
+    "desustream.net",
+    "cdn.odcloud.net"
+  ]
+}
