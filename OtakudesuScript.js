@@ -286,3 +286,22 @@ source.getContentDetails = function (url) {
         )
     });
 };
+
+
+source.isPlaylistUrl = function (url) {
+    return /otakudesu\.blog\/anime\//i.test(url);
+};
+
+source.getPlaylist = function (url) {
+    var html = getHtml(url);
+    var episodes = parseEpisodes(html, "");
+    var urls = [];
+
+    for (var i = 0; i < episodes.length; i++) {
+        urls.push(episodes[i].url);
+    }
+
+    log("Playlist episode ditemukan: " + urls.length);
+    return urls;
+};
+
