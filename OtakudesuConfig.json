@@ -4,7 +4,7 @@
   "author": "Local Developer",
   "authorUrl": "https://otakudesu.blog/",
   "platformUrl": "https://otakudesu.blog/",
-  "sourceUrl": "http://192.168.100.247:8080/OtakudesuConfig.json",
+  "sourceUrl": "https://ivanyulianto.github.io/otakudesu-grayjay/OtakudesuConfig.json",
   "repositoryUrl": "https://otakudesu.blog/",
   "scriptUrl": "./OtakudesuScript.js",
   "version": 1,
